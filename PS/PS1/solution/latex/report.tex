@@ -92,12 +92,12 @@ Equation~\eqref{eq:astar-priority} with the zero heuristic
 h_0(q,q_G)=0.
 \label{eq:zero}
 \end{equation}
-The informed search uses the Manhattan heuristic
+The informed search uses the \(L_1\) heuristic
 \begin{equation}
 h_1(q,q_G)=|x-x_G|+|y-y_G|.
-\label{eq:manhattan}
+\label{eq:l1-distance}
 \end{equation}
-A unit translation can reduce Equation~\eqref{eq:manhattan} by at most
+A unit translation can reduce Equation~\eqref{eq:l1-distance} by at most
 one, so it is a consistent lower bound on the remaining cost. Whenever
 a cheaper path to a state is found, its queue priority and parent are
 updated. The search stops when the goal is removed from the queue, then
@@ -114,19 +114,22 @@ A*, \(h=L_1\) & 781 & 12.0\% & 158\\}
 
 
 Figure~\ref{fig:point-search} compares the areas explored by the two searches.
-\plate[0.76\linewidth]{point-search.png}{Visited cells in blue and resulting
+\plate[0.63\linewidth]{point-search.png}{Visited cells in blue and resulting
 paths in red.}{fig:point-search}
 
-\question{How many states does A* visit compared with Dijkstra?}
-A* visits 781 states, or 12.0\% of Dijkstra's 6,493. The Manhattan heuristic
-in Equation~\eqref{eq:manhattan} favors cells that make progress toward the goal.
-Every state processed by A* in this run had \(f=158\). The exact count
-also depends on the tie-breaking rule.
+\question{Why does A* visit fewer states than Dijkstra?}
+Dijkstra orders cells by cost from the start. The \(L_1\) estimate
+in Equation~\eqref{eq:l1-distance} guides A* toward the goal. Among cells
+with equal cost from the start, A* explores those closer to the goal first.
+On this map, A* reaches
+the goal after visiting 781 states, or 12.0\% of Dijkstra's 6,493.
+The reduction depends on the map and on how ties are resolved.
 
 \question{What is the final path cost?}
-Both algorithms return 158. The path achieves the Manhattan lower bound
-with 79 moves down and 79 right. The notebook saves it as
-\texttt{point\_solve.gif}.
+Both algorithms return the same optimal cost of 158. A* changes the
+order of the search, while both algorithms minimize the same cost.
+Here 79 moves down and 79 right attain the \(L_1\) lower bound.
+The notebook saves the path as \texttt{point\_solve.gif}.
 
 \clearpage
 \section{Task 2: Configuration space of the rod}
@@ -309,7 +312,7 @@ Is it admissible? Justify your answer.}}
 
 We search the graph from Task 2 from \((6,6,2)\) to \((85,85,0)\).
 Dijkstra uses Equation~\eqref{eq:zero} and the position-only A* search
-uses Equation~\eqref{eq:manhattan}, ignoring orientation. The third
+uses Equation~\eqref{eq:l1-distance}, ignoring orientation. The third
 search uses
 \begin{equation}
 h_{\mathrm{rod}}(q,q_G)=h_1(q,q_G)+d_\theta(k,k_G),
@@ -349,15 +352,24 @@ count visited orientations, red lines show paths, and purple diamonds mark
 turns.}{fig:rod-search}
 
 \question{How many states are visited, and what is the final cost?}
-Dijkstra visits 16,323 states. A* with Manhattan distance visits 7,720
+Dijkstra visits 16,323 states. A* with \(L_1\) distance visits 7,720
 (47.3\% of Dijkstra's count). Including rotation reduces this to
 4,572 (28.0\%). All three return the same optimal cost, 164.
 Figure~\ref{fig:rod-search} shows the difference in the explored regions.
 The notebook saves the Dijkstra plan as \texttt{rod\_solve.gif}.
 
+\question{Why does including orientation reduce the search further?}
+The goal specifies a position and an orientation. The \(L_1\) estimate
+assigns the same remaining cost to every orientation at a given
+position. Equation~\eqref{eq:rod-heuristic} also counts the minimum
+number of turns still needed. For states with the same cost so far
+and the same position, A* therefore gives priority to the state that
+needs fewer turns to match the goal. The objective is still the total
+cost of translations and rotations.
+
 \question{How do these results relate to Task 1?}
 The rod path uses the same minimum of 158 translations and adds six turns,
-giving a total cost of 164. Equation~\eqref{eq:manhattan} is exact at the
+giving a total cost of 164. Equation~\eqref{eq:l1-distance} is exact at the
 point robot's start. For the rod, Equation~\eqref{eq:rod-heuristic}
 raises the initial lower bound from 158 to 160, below the optimal cost of 164.
 
