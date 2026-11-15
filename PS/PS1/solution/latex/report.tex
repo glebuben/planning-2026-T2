@@ -1,0 +1,532 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[margin=25mm]{geometry}
+\usepackage{amsmath,graphicx,booktabs,xcolor,pdfpages}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,hypertexnames=false]{hyperref}
+
+% Replace these two placeholders before submitting.
+\newcommand{\StudentName}{\rule{68mm}{0.45pt}}
+\newcommand{\ReportDate}{\rule{68mm}{0.45pt}}
+
+
+\graphicspath{{figures/}}
+\setlength{\emergencystretch}{2.5em}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+
+\title{\vspace{-12mm}
+  Planning Algorithms in AI\\[2mm]
+  \Large Problem Set 1 --- Discrete Planning}
+\author{Gleb Kirillov\\ \small Instructor: Gonzalo Ferrer}
+\date{\textbf{Date:} 14.11.2026}
+
+\newcommand{\excerpt}[2]{%
+  \smallskip\noindent
+  \fcolorbox{black!35}{black!4}{%
+    \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}
+    \small\textbf{#1}\par #2
+    \end{minipage}}%
+  \par\smallskip}
+\newcommand{\quoted}[1]{\textquotedblleft#1\textquotedblright}
+\newcommand{\plate}[4][\linewidth]{%
+  \begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=#1]{#2}
+    \caption{#3}\label{#4}
+  \end{figure}}
+\newcommand{\question}[1]{\par\smallskip\textbf{#1}\par}
+
+\newcommand{\metrics}[1]{%
+  \begin{center}\small
+  \begin{tabular}{lrrr}
+  \toprule Search & Visited states & Share of Dijkstra & Path cost\\
+  \midrule #1\bottomrule
+  \end{tabular}
+  \end{center}}
+
+\begin{document}
+\ifx\XeTeXversion\undefined
+  \ifdefined\pdfminorversion\pdfminorversion=7\relax\fi
+\else
+  \special{pdf:minorversion 7}
+\fi
+
+\maketitle
+
+\section{Task 1: Dijkstra and A* for a point robot}
+
+\excerpt{Assignment excerpts, p.~2}{%
+\quoted{Implement the Dijkstra and A* algorithms with the heuristic function
+\(h(q,q_G)=0\), and plan from start to goal.}\par
+\quoted{Change the heuristic function now to the \(L_1\) norm. Report the same
+metrics and compare them with Dijkstra in a table.}}
+
+
+\subsection{Map and search graph}
+
+Figure~\ref{fig:point-map} shows the input occupancy grid, before search.
+Let \(M(x,y)\) be the value at row \(x\) and column \(y\).
+A configuration of the point robot is a two-dimensional state \(q=(x,y)\).
+The graph has one vertex for each in-bounds cell with \(M(x,y)=0\).
+Two vertices are joined by an undirected unit-cost edge if they differ by
+one row or one column, with the other coordinate fixed. An occupied cell
+has no vertex, so no edge can end in a collision. The search generates
+edges by testing the four neighboring cells on demand.
+The start is \(q_S=(6,6)\) and the goal is \(q_G=(85,85)\).
+
+\plate[0.40\linewidth]{point-map.png}{Original occupancy map. Black marks
+obstacles, white marks free cells, and the markers indicate the start
+and goal.}{fig:point-map}
+
+\clearpage
+\subsection{Algorithms and heuristics}
+
+The priority of a state in A* is
+\begin{equation}
+f(q)=g(q)+h(q,q_G),
+\label{eq:astar-priority}
+\end{equation}
+where \(g\) is the least cost found so far from the start. Dijkstra uses
+Equation~\eqref{eq:astar-priority} with the zero heuristic
+\begin{equation}
+h_0(q,q_G)=0.
+\label{eq:zero}
+\end{equation}
+The informed search uses the \(L_1\) heuristic
+\begin{equation}
+h_1(q,q_G)=|x-x_G|+|y-y_G|.
+\label{eq:l1-distance}
+\end{equation}
+A unit translation can reduce Equation~\eqref{eq:l1-distance} by at most
+one, so it is a consistent lower bound on the remaining cost. Whenever
+a cheaper path to a state is found, its queue priority and parent are
+updated. The search stops when the goal is removed from the queue, then
+recovers the path by following the parent pointers. This follows Lecture
+L02, slides 8, 13, and 14.
+
+A visited state is one removed from the queue for processing, including
+the goal. Ties in \(f\) favor smaller \(h\) and then earlier insertion.
+
+\subsection{Results and answers}
+
+\metrics{Dijkstra, \(h=0\) & 6,493 & 100.0\% & 158\\
+A*, \(h=L_1\) & 781 & 12.0\% & 158\\}
+
+
+Figure~\ref{fig:point-search} compares the areas explored by the two searches.
+\plate[0.63\linewidth]{point-search.png}{Visited cells in blue and resulting
+paths in red.}{fig:point-search}
+
+\question{Why does A* visit fewer states than Dijkstra?}
+Dijkstra orders cells by cost from the start. The \(L_1\) estimate
+in Equation~\eqref{eq:l1-distance} guides A* toward the goal. Among cells
+with equal cost from the start, A* explores those closer to the goal first.
+On this map, A* reaches
+the goal after visiting 781 states, or 12.0\% of Dijkstra's 6,493.
+The reduction depends on the map and on how ties are resolved.
+
+\question{What is the final path cost?}
+Both algorithms return the same optimal cost of 158. A* changes the
+order of the search, while both algorithms minimize the same cost.
+Here 79 moves down and 79 right attain the \(L_1\) lower bound.
+The notebook saves the path as \texttt{point\_solve.gif}.
+
+\clearpage
+\section{Task 2: Configuration space of the rod}
+
+\excerpt{Assignment excerpts, pp.~2--3}{%
+\quoted{Visualize from the given data the workspace and the different rod
+configurations for each discretized orientation.}\par
+\quoted{Visualize the environment together with the object.}\par
+\quoted{Create the C-space for the 2D environment map.}\par
+\quoted{What is the size of the C-space? How do the four orientation slices
+differ, and why?}}
+
+
+\subsection{State variables and rod footprints}
+
+Task 1 uses two coordinates. The rod adds an orientation index
+\(k\in\{0,1,2,3\}\), so its configuration state is three-dimensional,
+\(q=(x,y,k)\). The corresponding angles are \(0^\circ,45^\circ,90^\circ\),
+and \(135^\circ\). Figure~\ref{fig:footprints} shows the workspace and
+footprints. Figure~\ref{fig:poses} shows two valid placements.
+
+\plate{workspace-footprints.png}{The workspace and the four supplied footprints.
+The cross marks the reference cell.}{fig:footprints}
+\plate[0.78\linewidth]{rod-poses.png}{Collision-free placements of the rod at
+the start and goal used in Task 3.}{fig:poses}
+
+\question{Why do four orientations suffice, and what is lost?}
+A \(180^\circ\) rotation reverses the ends of the rod but leaves its
+footprint unchanged. The four masks therefore exhaust the distinct
+footprints on the \(45^\circ\) sampling grid. Angles between the sampled
+ones are absent. The planner tests discrete poses and does not check
+the area swept during a rotation.
+
+\clearpage
+\subsection{Convolution kernels and collision test}
+
+The convolution kernels \(K_0,\ldots,K_3\) are the four binary
+\(11\times11\) masks read from the supplied \texttt{rod} array, in the
+same order as Figure~\ref{fig:footprints}. In each matrix, a 1 marks a cell
+occupied by the rod, and row 6, column 6 is the reference cell (one-based
+matrix indices). The exact kernels used in the notebook are shown below.
+
+\begingroup\footnotesize\setlength{\arraycolsep}{2.2pt}
+\[
+K_0=\left[\begin{array}{@{}*{11}{c}@{}}
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 & 1 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]\qquad K_1=\left[\begin{array}{@{}*{11}{c}@{}}
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]
+\]
+\endgroup
+
+\begingroup\footnotesize\setlength{\arraycolsep}{2.2pt}
+\[
+K_2=\left[\begin{array}{@{}*{11}{c}@{}}
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]\qquad K_3=\left[\begin{array}{@{}*{11}{c}@{}}
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array}\right]
+\]
+\endgroup
+
+Index the entries of each kernel by offsets \(u,v\in\{-5,\ldots,5\}\).
+Extend \(M\) to \(M_{\mathrm{pad}}\) by setting every out-of-bounds cell
+to 1. For each map center, compute
+\begin{equation}
+S_k(x,y)=(M_{\mathrm{pad}} * K_k)(x,y)
+  =\sum_{u=-5}^{5}\sum_{v=-5}^{5}
+  M_{\mathrm{pad}}(x-u,y-v)\,K_k(u,v).
+\label{eq:convolution}
+\end{equation}
+Convolution reverses \(u,v\), but the supplied kernels satisfy
+\(K_k(u,v)=K_k(-u,-v)\). Equation~\eqref{eq:convolution} therefore counts
+exactly the occupied rod cells that touch an obstacle or lie outside the
+grid. The notebook evaluates it using \texttt{scipy.signal.convolve2d}
+with \texttt{mode='same'}, \texttt{boundary='fill'}, and \texttt{fillvalue=1}.
+The output slice keeps the map size. It marks \((x,y,k)\) blocked when
+\(S_k(x,y)>0\) and free when \(S_k(x,y)=0\). The notebook independently
+checks the result by shifting and combining obstacle masks at the occupied
+footprint offsets.
+
+\clearpage
+\subsection{Orientation slices and graph edges}
+
+\plate{configuration-slices.png}{Four configuration-space slices. Black marks
+workspace obstacles. Orange marks additional cells blocked by the rod footprint.
+White marks free configurations. Each panel fixes one orientation index.}{fig:slices}
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule Orientation & Free configurations & Connected components\\
+\midrule
+\(0^\circ\) & 4,677 & 2\\
+\(45^\circ\) & 3,926 & 4\\
+\(90^\circ\) & 4,574 & 1\\
+\(135^\circ\) & 3,909 & 5\\
+\midrule Total & 17,086 & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\question{What is the size of the configuration space?}
+There are \(100\times100\times4=40{,}000\) candidate configurations, of
+which 17,086 (42.7\%) are free. Each panel of Figure~\ref{fig:slices}
+is a two-dimensional cut through this three-dimensional state space,
+with \(k\) held fixed.
+
+\question{How do the slices differ, and why?}
+A horizontal footprint extends obstacles along columns and a vertical
+one along rows. Diagonal footprints extend them along both coordinates,
+thickening all four border strips. The two diagonal slices have the
+fewest free configurations. For example, the passage near column 66 is
+open at \(90^\circ\) and blocked at \(0^\circ\). The table counts components
+using only the four translations within each individual slice.
+
+\question{How are the slices connected?}
+Each free \((x,y,k)\) is a vertex. A translation joins neighboring
+free cells within the same slice. An in-place turn joins free cells at
+the same \((x,y)\) in adjacent slices. Specifically, slice 1 connects to
+2 and 4, slice 2 to 1 and 3, slice 3 to 2 and 4, and slice 4 to 3 and 1.
+These are one-based slice numbers. A connection exists only when both
+endpoint configurations are free. Each edge has unit cost and can be
+traversed in either direction. This gives one graph with 17,086 vertices,
+more than the \(6{,}859\) free-cell vertices in the point-robot graph.
+
+\clearpage
+\section{Task 3: A* with position and orientation}
+
+\excerpt{Assignment excerpts, p.~3}{%
+\quoted{On this first iteration, use the heuristic function \(h(q,q_G)=0\),
+which is equivalent to the Dijkstra algorithm.}\par
+\quoted{Change the heuristic function now to be \(h(q,q_G)=L_1\) norm of the
+\(x,y\) components.}\par
+\quoted{Propose a heuristic function \(h(q,q_G)\) that includes orientation.
+Is it admissible? Justify your answer.}}
+
+
+\subsection{Heuristics on the rod graph}
+
+We search the graph from Task 2 from \((6,6,2)\) to \((85,85,0)\).
+Dijkstra uses Equation~\eqref{eq:zero} and the position-only A* search
+uses Equation~\eqref{eq:l1-distance}, ignoring orientation. The third
+search uses
+\begin{equation}
+h_{\mathrm{rod}}(q,q_G)=h_1(q,q_G)+d_\theta(k,k_G),
+\label{eq:rod-heuristic}
+\end{equation}
+where
+\begin{equation}
+d_\theta(k,k_G)=\min\bigl(\lvert k-k_G\rvert,\;4-\lvert k-k_G\rvert\bigr).
+\label{eq:four-turns}
+\end{equation}
+The orientation indices form the cycle \(0\to1\to2\to3\to0\).
+There are two arcs from \(k\) to a different \(k_G\). The arc through
+consecutive indices without wraparound has \(\lvert k-k_G\rvert\) edges.
+The other arc uses the remaining edges of the cycle, so it has
+\(4-\lvert k-k_G\rvert\) edges. Equation~\eqref{eq:four-turns} takes the
+shorter route because the robot can turn in either direction. For
+example, \(3\to0\) takes one turn even though the indices differ by three.
+When \(k=k_G\), the formula gives zero.
+
+\question{Is the orientation heuristic admissible?}
+Yes. Ignoring obstacles, every solution needs at least \(h_1\) translations
+and at least \(d_\theta\) turns. A single action can contribute to only
+one of those counts. Their sum in Equation~\eqref{eq:rod-heuristic} is
+therefore a lower bound. Each graph edge changes only one term by at most
+one, so the sum is also consistent.
+
+\clearpage
+\subsection{Results and answers}
+
+\metrics{Dijkstra, \(h=0\) & 16,323 & 100.0\% & 164\\
+A*, \(h=L_1\) & 7,720 & 47.3\% & 164\\
+A*, \(h=L_1+d_\theta\) & 4,572 & 28.0\% & 164\\}
+
+
+\plate{rod-search.png}{Search traces projected onto the workspace. Blue shades
+count visited orientations, red lines show paths, and purple diamonds mark
+turns.}{fig:rod-search}
+
+\question{How many states are visited, and what is the final cost?}
+Dijkstra visits 16,323 states. A* with \(L_1\) distance visits 7,720
+(47.3\% of Dijkstra's count). Including rotation reduces this to
+4,572 (28.0\%). All three return the same optimal cost, 164.
+Figure~\ref{fig:rod-search} shows the difference in the explored regions.
+The notebook saves the Dijkstra plan as \texttt{rod\_solve.gif}.
+
+\question{Why does including orientation reduce the search further?}
+The goal specifies a position and an orientation. The \(L_1\) estimate
+assigns the same remaining cost to every orientation at a given
+position. Equation~\eqref{eq:rod-heuristic} also counts the minimum
+number of turns still needed. For states with the same cost so far
+and the same position, A* therefore gives priority to the state that
+needs fewer turns to match the goal. The objective is still the total
+cost of translations and rotations.
+
+\question{How do these results relate to Task 1?}
+The rod path uses the same minimum of 158 translations and adds six turns,
+giving a total cost of 164. Equation~\eqref{eq:l1-distance} is exact at the
+point robot's start. For the rod, Equation~\eqref{eq:rod-heuristic}
+raises the initial lower bound from 158 to 160, below the optimal cost of 164.
+
+\clearpage
+\section{Task 4: Forward-only motion (additional experiment)}
+
+\textit{Student-designed extension.} I designed this experiment to show
+how a coarse angular discretization can make a planning problem
+unsolvable and to examine the trade-off between finding a feasible route
+and keeping the configuration space small. The rod can move only
+forward along its current heading, but it can still rotate in place.
+I compare the four geometric orientations supplied in PS1 with a finer
+angular discretization, measuring both whether the goal is reachable
+and how much the configuration space grows.
+
+\excerpt{Extension question}{%
+\quoted{Can the rod reach the goal if it can only move forward along its current
+orientation, while retaining in-place rotations? Does a finer angular
+discretization admit a route?}}
+
+
+\subsection{Search with the supplied angular discretization}
+
+The four geometric orientations give eight directed headings, since
+the two ends of each footprint define opposite forward directions.
+A state can move one step forward along its heading or turn \(45^\circ\)
+in place. Each action costs one, including a diagonal step. The collision
+test uses the destination footprint. A forward edge is directed because
+the reverse step would require facing the other way.
+
+Dijkstra still uses Equation~\eqref{eq:zero}. For the two A* runs we use
+\begin{equation}
+h_\infty(q,q_G)=\max\{\lvert x-x_G\rvert,\lvert y-y_G\rvert\}.
+\label{eq:chebyshev}
+\end{equation}
+A diagonal step can reduce both coordinate differences by one, so
+Equation~\eqref{eq:chebyshev} bounds the number of forward steps. The
+second heuristic adds the shortest turn count on the eight-heading cycle:
+\begin{equation}
+h_{\mathrm{forward}}(q,q_G)=
+h_\infty(q,q_G)+\min\bigl(\lvert k-k_G\rvert,\;8-\lvert k-k_G\rvert\bigr).
+\label{eq:forward-heuristic}
+\end{equation}
+The same two-arc argument as in Equation~\eqref{eq:four-turns} applies.
+Each action changes at most one term by at most one, so both
+Equations~\eqref{eq:chebyshev} and~\eqref{eq:forward-heuristic} are consistent.
+
+\subsection{Results and answers}
+
+\plate[0.70\linewidth]{reachable-headings.png}{Reachable centers on the full map
+and reachable headings near the start.}{fig:reachable}
+
+\clearpage
+\subsection{Initial heading and the blockage}
+
+\question{Does the original start reach the goal, and where does it get stuck?}
+Dijkstra and both A* runs exhaust the same 14 configurations in six cells
+from the \(90^\circ\) start. The first forward step hits the upper wall.
+Turning toward \(45^\circ\) is legal. Turning toward \(135^\circ\) intersects
+a nearby obstacle. Figure~\ref{fig:reachable} shows the reachable region.
+
+\question{Would a different initial heading make the goal reachable?}
+\begin{center}\small
+\begin{tabular}{lrrl}
+\toprule Initial headings at \((6,6)\) & Reachable states & Centers & Goal center\\
+\midrule
+\(0^\circ,45^\circ,90^\circ\) & 14 & 6 & Unreachable\\
+\(180^\circ,225^\circ,270^\circ\) & 5 & 2 & Unreachable\\
+\(135^\circ,315^\circ\) & -- & -- & Initial pose blocked\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Obstacles can block in-place turns, so the initial heading changes the
+reachable set. None of the six valid initial headings reaches the goal center.
+
+\plate[0.9\linewidth]{blocked-frames.png}{From left to right, the rod starts at \(90^\circ\),
+hits the upper wall when trying to move forward, and overlaps an obstacle
+when trying to turn to \(135^\circ\). Red marks the overlap.}{fig:blocked}
+
+\clearpage
+\subsection{Finer headings and the recovered route}
+
+The refined model uses 16 primitive integer directions with components of
+magnitude at most two, including slopes \(1:2\) and \(2:1\). It preserves
+the original masks and rasterizes new footprints as centered line segments.
+For longer forward moves, it checks the destination and grid cells
+surrounding the midpoint. The result applies to this discrete collision model.
+
+\begin{center}\small
+\begin{tabular}{lrr}
+\toprule Heading model & Visited states & Path cost\\
+\midrule
+8 headings & 14 & Unreachable\\
+16 headings, original forward directions & 27 & Unreachable\\
+16 headings, all forward directions & 52,321 & 88\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\question{Does finer discretization recover a route, and what change makes it possible?}
+Dijkstra finds a route with 72 forward steps and 16 turns. Its first
+translation goes from \((6,6)\) to \((5,8)\) at about \(26.6^\circ\). With
+the same 16 headings but only the original forward directions, no route
+exists. The successful refinement adds both turning angles and forward
+directions. Figure~\ref{fig:blocked} shows the original blockage, and
+Figure~\ref{fig:fine} shows the recovered route. The result isolates
+the effect of enabling forward motion at the new angles within this
+discrete model. Path cost counts actions within the respective model.
+
+\plate[0.83\linewidth]{fine-frames.png}{The rod leaves the start along a new heading, crosses
+the workspace, and reaches the goal.}{fig:fine}
+
+\clearpage
+\subsection{Conclusions}
+
+\question{How much does the configuration space grow?}
+The state still has three coordinates \((x,y,k)\). The refinement
+increases the number of values of \(k\) while leaving the spatial grid
+unchanged.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule Model & Angular values & Candidate states & Free states\\
+\midrule
+Task 3, undirected footprint orientations & 4 & 40,000 & 17,086\\
+Task 4, coarse directed headings & 8 & 80,000 & 34,172\\
+Task 4, refined directed headings & 16 & 160,000 & 64,258\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+From 8 to 16 headings, the candidate space doubles
+(\(100\times100\times8\) to \(100\times100\times16\)). The number of free
+states, which are the vertices of the search graph, increases by
+30,086 (88.0\%). Relative to the four-orientation model in Task~3,
+the refined graph has four times as many candidate states.
+
+\question{What trade-off does the refinement show?}
+The four supplied footprint angles, represented by eight directed
+headings, make this forward-only instance unsolvable. Sampling the
+angle more finely and allowing forward steps at the new headings
+restores a route of 88 actions. In this model, the price of planning
+with these extra directions is a larger configuration space.
+
+\section*{Code availability}
+The notebook, report source, and animations are maintained in the
+\href{https://github.com/glebuben/planning-2026-T2}{planning-2026-T2 GitHub repository}
+on branch \texttt{ps1}, under \texttt{PS/PS1/solution}.
+
+\section*{AI usage acknowledgment}
+A large language model (LLM) was used to generate visualizations, assist
+with debugging the code, and improve the grammar and wording of the conclusions.
+
+\clearpage
+\phantomsection
+\pdfbookmark[0]{Appendix A. Original problem set}{assignment}
+\includepdf[pages=-,pagecommand={\thispagestyle{empty}}]{../../ps1.pdf}
+
+\end{document}
